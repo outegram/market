@@ -1,1 +1,50 @@
 
+---
+description: Branch naming and PR conventions for milestone issues
+alwaysApply: true
+---
+
+# Branches and Pull Requests
+
+Every PR implements exactly one `MX-YY` milestone issue.
+
+## Branch names
+
+Use the exact branch specified in `docs/process/MILESTONE_ISSUES.md` for the issue. Prefixes by type:
+
+- `chore/mX-YY-*` — infra, CI, tooling, audits (most M0, M7, M8; selected M2/M3/M4)
+- `db/mX-YY-*` — migrations and seeders (M1-01, M1-02)
+- `feature/mX-YY-*` — everything else
+
+Never invent a branch name — copy it from the milestone doc verbatim.
+
+## PR title
+
+```
+MX-YY — <issue name from MILESTONE_ISSUES.md>
+```
+
+## PR body (required sections)
+
+```markdown
+## Summary
+- 2–4 bullets on what was built and why.
+
+## Acceptance criteria
+- [x] <paste each criterion from the issue verbatim, check when satisfied>
+
+## Verbal explanation test
+(Only for M0-08 and other reference-implementation PRs — author explains in plain English why each Action lives where it does.)
+
+## Architecture notes
+Flag any deviation. If non-empty, open and link an `architecture-exception` issue.
+Forbidden from M3 onward.
+```
+
+## CI jobs that must be green before merge
+
+`install`, `lint`, `analyse`, `test`, `docs-freshness`, `architecture-rules`.
+
+## Reviewer
+
+Path-based via `.github/CODEOWNERS`. PRs carrying the `payment-critical` label require the Architecture Steward.
