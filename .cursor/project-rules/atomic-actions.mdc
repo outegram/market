@@ -1,1 +1,56 @@
 
+---
+description: Hard constraints for Atomic Actions (enforced by custom PHPStan rules from M0-04)
+globs: app/Domain/*/Actions/Atomic/**/*.php
+alwaysApply: false
+---
+
+# Atomic Action rules
+
+An Atomic Action does **one** thing against **one** table or **one** external service. Violations fail the `architecture-rules` CI job.
+
+## Forbidden in Atomic Actions
+
+The two PHPStan rules committed in M0-04 will block:
+
+- **`AtomicActionMustNotCallOtherActions`** — no instantiating or resolving another Action class; no `dispatch()` on a Job; no `event()` or `Event::dispatch()`.
+- **`OnlyOrchestratorsMayStartTransactions`** — no `DB::transaction()`, `DB::beginTransaction()`, `DB::commit()`, or `DB::rollBack()`.
+
+## Required shape
+
+```php
+// ❌ BAD — orchestrates, fires events, opens transaction
+final class CreateOrderRecordAction
+{
+    public function execute(PlaceOrderDTO $dto): Order
+    {
+        return DB::transaction(function () use ($dto) {
+            $order = Order::create($dto->toArray());
+            event(new OrderPlacedNotificationEvent($order));
+            app(SnapshotPackagePricingAction::class)->execute($order);
+            return $order;
+        });
+    }
+}
+
+// ✅ GOOD — single write, no side effects
+final class CreateOrderRecordAction
+{
+    public function execute(PlaceOrderDTO $dto): Order
+    {
+        return Order::create($dto->toArray());
+    }
+}
+```
+
+## Where to put side effects
+
+Move the transaction, the sibling Action calls, and the event dispatch into an Orchestrator (`app/Domain/{Domain}/Actions/Orchestrators/`). See `PlaceOrderAction` (M0-08 reference implementation) for the canonical pattern.
+
+## Reference implementations to model against
+
+- `app/Domain/User/Actions/Atomic/CreateUserRecordAction.php`
+- `app/Domain/User/Actions/Atomic/HashPasswordAction.php`
+- `app/Domain/Service/Actions/Atomic/CreateServiceRecordAction.php`
+- `app/Domain/Order/Actions/Atomic/CreateOrderRecordAction.php`
+- `app/Domain/Order/Actions/Atomic/SnapshotPackagePricingAction.php`
