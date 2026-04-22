@@ -1,1 +1,70 @@
 
+---
+description: Job and listener conventions — explicit queue, afterCommit, idempotency, failed()
+globs:
+  - app/Jobs/**/*.php
+  - app/**/Listeners/**/*.php
+alwaysApply: false
+---
+
+# Jobs and Listeners
+
+## Every Job declares its queue
+
+Assign one of the five named queues from M4-03. The `default` queue may only be used with a justifying comment.
+
+| Queue | Use for |
+|---|---|
+| `critical` | Payment webhooks, fraud flags, account bans |
+| `high` | Order notifications, OTP, onboarding review |
+| `default` | General (requires justifying comment) |
+| `low` | Search indexing, rating recalc, seller stats |
+| `batch` | Email digests, reports, full reindex |
+
+```php
+final class IndexServiceInSearchJob implements ShouldQueue
+{
+    use Queueable;
+
+    public string $queue = 'low';
+
+    public function handle(ElasticsearchClient $client): void { ... }
+
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('search.index.failed', [
+            'service_id' => $this->serviceId,
+            'exception' => $exception->getMessage(),
+        ]);
+    }
+}
+```
+
+## Every Job implements `failed()`
+
+The M2-09 observability contract requires a `failed()` method on every Job that logs a structured entry (no PII, entity IDs in context, dot-notation message).
+
+## Listeners for `*NotificationEvent` set `$afterCommit = true`
+
+```php
+final class ReleaseEscrowOnCompletionListener implements ShouldQueue
+{
+    public bool $afterCommit = true;
+    public string $queue = 'critical';
+
+    public function handle(OrderCompletedNotificationEvent $event): void { ... }
+}
+```
+
+## Idempotency
+
+Webhook-backed and scheduled Jobs must be idempotent — safe to run twice on the same input. Examples:
+
+- `ProcessClearingJob` (M3-02): filters `status = clearing AND clearance_at <= now()` — re-running finds nothing new.
+- Webhook handlers (M3-07): check `stripe_webhook_events` for duplicate `event_id` before processing.
+
+## Structured logging (M2-09)
+
+- Message: dot notation `domain.action` (e.g. `order.placing`, `payment.captured`).
+- Context: entity IDs as structured fields, never interpolated into the message.
+- **No PII** — no emails, phone numbers, payment method details.
