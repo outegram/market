@@ -1,1 +1,66 @@
 
+---
+description: Migration conventions — immutable financial and audit tables
+globs: database/migrations/**/*.php
+alwaysApply: false
+---
+
+# Migrations
+
+## Immutable tables — NO `updated_at`, NO soft deletes
+
+These tables are append-only audit trails. Any migration that adds `updated_at`, `deleted_at`, `->timestamps()`, or `->softDeletes()` to them must be rejected.
+
+- `ledger_entries`
+- `admin_actions`
+
+```php
+// ❌ BAD
+Schema::create('ledger_entries', function (Blueprint $table) {
+    $table->id();
+    $table->timestamps();         // updated_at forbidden
+    $table->softDeletes();        // soft deletes forbidden
+});
+
+// ✅ GOOD
+Schema::create('ledger_entries', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('user_id')->constrained();
+    $table->string('direction');   // credit | debit
+    $table->unsignedBigInteger('amount_cents');
+    $table->string('currency', 3);
+    $table->morphs('source');
+    $table->timestamp('created_at');  // created_at only
+});
+```
+
+## Money columns
+
+Amounts are stored as integer cents: `unsignedBigInteger` or `integer`. **Never** `decimal` or `float`.
+
+## Enum columns
+
+Use Laravel `->enum('column', EnumClass::values())` backed by a PHP 8.3 `enum` in `app/Domain/{Domain}/Enums/`. No free-text status strings.
+
+## Foreign key order
+
+Follow the dependency order in **M1-01** exactly:
+
+1. Taxonomy (countries, languages, categories, skills, tags) — no FKs.
+2. Identity (users, seller profiles, pivots).
+3. Service listings.
+4. Transactions (orders, conversations, reviews).
+5. Financial (payments, escrow, withdrawals, ledger, credits).
+6. Operational (notifications, fraud signals, admin actions, search queries).
+
+`php artisan migrate:fresh` must complete without errors. Add the migration in a position that respects this order.
+
+## Verification
+
+After editing, run:
+
+```bash
+php artisan migrate:fresh --seed
+```
+
+If M3 or later, also run `php artisan ledger:reconcile` (from M3-06) to ensure the ledger is still balanced.
