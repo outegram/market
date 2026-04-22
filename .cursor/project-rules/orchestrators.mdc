@@ -1,1 +1,62 @@
 
+---
+description: Orchestrator Action pattern — transaction boundary and event dispatch
+globs: app/Domain/*/Actions/Orchestrators/**/*.php
+alwaysApply: false
+---
+
+# Orchestrator Action rules
+
+Orchestrators are the **only** place that:
+
+- Opens a DB transaction (`DB::transaction(...)`).
+- Composes multiple Atomic Actions.
+- Dispatches domain events.
+
+## Canonical shape
+
+```php
+final class PlaceOrderAction
+{
+    public function __construct(
+        private readonly CreateOrderRecordAction $createOrder,
+        private readonly SnapshotPackagePricingAction $snapshotPricing,
+    ) {}
+
+    public function execute(PlaceOrderDTO $dto): Order
+    {
+        return DB::transaction(function () use ($dto) {
+            $order = $this->createOrder->execute($dto);
+            $this->snapshotPricing->execute($order);
+
+            event(new OrderPlacedNotificationEvent($order));
+
+            return $order;
+        });
+    }
+}
+```
+
+## Listener rule — `$afterCommit = true`
+
+Every queued listener for a `*NotificationEvent` must declare `$afterCommit` so it fires only after the transaction commits. Otherwise a rollback leaves the side effect (email, index update, payout) orphaned.
+
+```php
+final class SendOrderPlacedEmailListener implements ShouldQueue
+{
+    public bool $afterCommit = true;
+    public string $queue = 'high';
+
+    public function handle(OrderPlacedNotificationEvent $event): void { ... }
+}
+```
+
+## Do NOT
+
+- Call HTTP clients or external APIs inside the transaction (they can't be rolled back).
+- Skip the transaction because "it's only two tables" — any multi-write Orchestrator must be transactional.
+- Fire events outside the transaction — events go **inside** so `$afterCommit` guarantees ordering.
+
+## Reference implementations
+
+`RegisterUserAction`, `CreateServiceAction`, `PlaceOrderAction` — all marked `// REFERENCE IMPLEMENTATION`. Measure any new Orchestrator against these.
