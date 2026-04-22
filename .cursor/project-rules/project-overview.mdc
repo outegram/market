@@ -1,0 +1,31 @@
+---
+description: Outegram Marketplace — project identity and canonical references
+alwaysApply: true
+---
+
+# Outegram Marketplace
+
+Laravel 13 marketplace. 9 milestones (M0–M8), 57 issues. Each issue = one GitHub Issue, one branch, one PR.
+
+## Canonical references (read before planning any change)
+
+- **Milestone roadmap:** `docs/process/MILESTONE_ISSUES.md`
+- **Architecture contract:** `docs/architecture/PROJECT_RULES_AND_EXECUTION.md`
+- **Decision card:** `docs/architecture/where-does-this-go.md`
+- **11-rule summary:** `docs/architecture/rules.md`
+- **Review checklist:** `docs/architecture/review-checklist.md`
+
+## Non-negotiables
+
+- **Actions** live in `app/Domain/{Domain}/Actions/Atomic/` or `Actions/Orchestrators/`. Atomic Actions never start transactions, dispatch jobs, or fire events. Only Orchestrators do.
+- **Money** is always integer cents via `app/Shared/ValueObjects/Money.php`. No floats in fees, tax, escrow, or payouts.
+- **`ledger_entries`** and **`admin_actions`** are append-only: no `updated_at`, no soft deletes. All financial state changes write a ledger row inside the same DB transaction.
+- **Search** reads only from Elasticsearch. `GET /api/v1/search/services` must not touch MySQL.
+- **Stripe webhooks** are idempotent and signature-verified before any handler logic runs.
+- **Architecture exceptions** are forbidden from M3 onward.
+
+## Before writing code for an issue
+
+1. Open `docs/process/MILESTONE_ISSUES.md` and find the `MX-YY` heading.
+2. Verify `Depends on:` is merged and the milestone gate has opened.
+3. Work the task checklist in the order listed. Every acceptance criterion becomes a Pest test.
